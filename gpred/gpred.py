@@ -237,7 +237,7 @@ def main() -> None: # pragma: no cover
     probable_genes_comp = predict_genes(sequence_rc, start_regex, stop_regex, shine_regex, 
                                         args.min_gene_len, args.max_shine_dalgarno_distance, args.min_gap)
     # Call to output functions
-    write_genes_pos(args.predicted_genes_file, probable_genes)
+    write_genes_pos(args.predicted_genes_file, probable_genes + probable_genes_comp)
     write_genes(args.fasta_file, sequence, probable_genes, sequence_rc, probable_genes_comp)
 
 
