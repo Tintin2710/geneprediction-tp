@@ -61,8 +61,13 @@ def read_fasta(fasta_file: Path) -> str:
     :param fasta_file: (Path) Path to the fasta file.
     :return: (str) Sequence from the genome. 
     """
-    pass
-
+    sequence = ""
+    with open(fasta_file, "r") as file:
+        for line in file:
+            if not line.startswith(">"):
+                sequence += line.strip()
+    sequence = sequence.upper()
+    return sequence
 
 def find_start(start_regex: Pattern, sequence: str, start: int, stop: int) -> Union[int, None]:
     """Find next start codon before a end position.
@@ -73,7 +78,10 @@ def find_start(start_regex: Pattern, sequence: str, start: int, stop: int) -> Un
     :param stop: (int) Stop position of the research
     :return: (int) If exist, position of the start codon. Otherwise None. 
     """
-    pass
+    match = start_regex.search(sequence, start, stop)
+    if match:
+        return match.start(0)
+    return None
 
 
 def find_stop(stop_regex: Pattern, sequence: str, start: int) -> Union[int, None]:
@@ -84,7 +92,11 @@ def find_stop(stop_regex: Pattern, sequence: str, start: int) -> Union[int, None
     :param start: (int) Start position of the research
     :return: (int) If exist, position of the stop codon. Otherwise None. 
     """
-    pass
+    matchs = stop_regex.finditer(sequence, start)
+    for match in matchs:
+        if (match.start(0) - start) % 3 == 0:
+            return match.start(0)
+    return None    
 
 
 def has_shine_dalgarno(shine_regex: Pattern, sequence: str, start: int, max_shine_dalgarno_distance: int) -> bool:
@@ -96,7 +108,17 @@ def has_shine_dalgarno(shine_regex: Pattern, sequence: str, start: int, max_shin
     :param max_shine_dalgarno_distance: (int) Maximum distance of the shine dalgarno to the start position
     :return: (boolean) true -> has a shine dalgarno upstream to the gene, false -> no
     """
-    pass
+    if start - max_shine_dalgarno_distance >= 0 :
+        matchs = shine_regex.search(sequence, start - max_shine_dalgarno_distance, start - 6)
+        if matchs :
+            matchs = matchs.start(0)
+            return True
+        else : 
+            return False
+    return False
+    
+
+    
 
 
 def predict_genes(sequence: str, start_regex: Pattern, stop_regex: Pattern, shine_regex: Pattern, 
@@ -112,7 +134,28 @@ def predict_genes(sequence: str, start_regex: Pattern, stop_regex: Pattern, shin
     :param min_gap: (int) Minimum distance between two genes.
     :return: (list) List of [start, stop] position of each predicted genes.
     """
-    pass
+    probable_genes = []
+    position_start = 0
+    while len(sequence) - position_start >= min_gene_len:
+        position_start = find_start(start_regex, sequence, position_start, len(sequence))
+        if position_start is not None:
+            stop = find_stop(stop_regex, sequence, position_start)
+            if stop:
+                gene_length = stop + 3 - position_start
+                if gene_length >= min_gene_len:
+                    if has_shine_dalgarno(shine_regex, sequence, position_start, max_shine_dalgarno_distance):
+                        probable_genes.append([position_start + 1, stop + 3])
+                        position_start = stop + 3 + min_gap
+                    else:
+                        position_start += 1
+                else:
+                    position_start += 1
+            else:
+                position_start += 1
+        else:
+            break
+
+    return probable_genes
 
 
 def write_genes_pos(predicted_genes_file: Path, probable_genes: List[List[int]]) -> None:
@@ -145,12 +188,12 @@ def write_genes(fasta_file: Path, sequence: str, probable_genes: List[List[int]]
             for i,gene_pos in enumerate(probable_genes):
                 fasta.write(">gene_{0}{1}{2}{1}".format(
                     i+1, os.linesep, 
-                    fill(sequence[gene_pos[0]-1:gene_pos[1]])))
+                    textwrap.fill(sequence[gene_pos[0]-1:gene_pos[1]])))
             i = i+1
             for j,gene_pos in enumerate(probable_genes_comp):
                 fasta.write(">gene_{0}{1}{2}{1}".format(
                             i+1+j, os.linesep,
-                            fill(sequence_rc[gene_pos[0]-1:gene_pos[1]])))
+                            textwrap.fill(sequence_rc[gene_pos[0]-1:gene_pos[1]])))
     except IOError:
         sys.exit("Error cannot open {}".format(fasta_file))
 
@@ -184,14 +227,18 @@ def main() -> None: # pragma: no cover
     # Arguments
     args = get_arguments()
     # Let us do magic in 5' to 3'
-    
-    # Don't forget to uncomment !!!
-    # Call these function in the order that you want
+    sequence = read_fasta(args.genome_file)
+    # Predict genes
+    probable_genes = predict_genes(sequence, start_regex, stop_regex, shine_regex, 
+                                   args.min_gene_len, args.max_shine_dalgarno_distance, args.min_gap)
     # We reverse and complement
-    #sequence_rc = reverse_complement(sequence)
+    sequence_rc = reverse_complement(sequence)
+    # Predict genes in 3' to 5'
+    probable_genes_comp = predict_genes(sequence_rc, start_regex, stop_regex, shine_regex, 
+                                        args.min_gene_len, args.max_shine_dalgarno_distance, args.min_gap)
     # Call to output functions
-    #write_genes_pos(args.predicted_genes_file, probable_genes)
-    #write_genes(args.fasta_file, sequence, probable_genes, sequence_rc, probable_genes_comp)
+    write_genes_pos(args.predicted_genes_file, probable_genes)
+    write_genes(args.fasta_file, sequence, probable_genes, sequence_rc, probable_genes_comp)
 
 
 
